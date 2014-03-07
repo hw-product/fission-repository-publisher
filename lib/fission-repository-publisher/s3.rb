@@ -91,13 +91,14 @@ module Fission
             bucket_name(payload).include?(Carnivore::Config.get(:fission, :repository_publisher, :domain)))
           zone = dns.zones.detect{|z| z.domain == Carnivore::Config.get(:fission, :repository_publisher, :domain)}
           existing = zone.records.detect{|record| record.name == bucket_name(payload)}
+          record_name = bucket_name(payload).sub(".#{Carnivore::Config.get(:fission, :repository_publisher, :domain)}", '')
           if(existing)
-            existing.name = bucket_name(payload).sub(".#{Carnivore::Config.get(:fission, :repository_publisher, :domain)}", '')
+            existing.name = record_name
             existing.type = 'CNAME'
             existing.value = endpoint || Carnivore::Config.get(:fission, :repository_publisher, :dns, :default_endpoint)
           else
             zone.records.create(
-              :name => bucket_name(payload).sub(".#{Carnivore::Config.get(:fission, :repository_publisher, :domain)}", ''),
+              :name => record_name,
               :type => 'CNAME',
               :value => endpoint || Carnivore::Config.get(:fission, :repository_publisher, :dns, :default_endpoint)
             )
