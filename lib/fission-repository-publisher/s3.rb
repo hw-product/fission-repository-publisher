@@ -13,7 +13,7 @@ module Fission
             creds = creds.merge(:path_style => true)
             creds.delete(:region)
           end
-          @s3_store = Fission::Assets::Store.new(creds)
+          @s3_store = Fission::Assets::Store.new(creds.merge(:bucket => :none))
         else
           @s3_store = object_store
         end
