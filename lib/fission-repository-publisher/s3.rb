@@ -4,6 +4,8 @@ module Fission
   module RepositoryPublisher
     class S3 < Fission::Callback
 
+      include Fission::Utils::Dns
+
       attr_reader :object_store, :s3_store
 
       def setup(*args)
@@ -63,6 +65,8 @@ module Fission
             site_endpoint = publish_bucket(bucket_name(payload))
             payload[:data][:repository_publisher][:endpoint] = site_endpoint
           end
+          point_dns(payload) # This should probably be a call to
+          # separate component
           payload[:data][:repository_publisher][:s3_bucket_name] = bucket_name(payload)
           job_completed(:repository_publisher, payload, message)
         end
@@ -80,6 +84,26 @@ module Fission
 
       def public?(payload)
         false
+      end
+
+      def point_dns(payload, endpoint = false)
+        if(Carnivore::Config.get(:fission, :repository_publisher, :dns, :enabled) &&
+            bucket_name(payload).include?(Carnivore::Config.get(:fission, :repository_publisher, :domain)))
+          zone = dns.zones.detect{|z| z.domain == Carnivore::Config.get(:fission, :repository_publisher, :domain)}
+          existing = zone.records.detect{|record| record.name == bucket_name(payload)}
+          if(existing)
+            existing.name = bucket_name(payload).sub(".#{Carnivore::Config.get(:fission, :repository_publisher, :domain)}", '')
+            existing.type = 'CNAME'
+            existing.value = endpoint || Carnivore::Config.get(:fission, :repository_publisher, :dns, :default_endpoint)
+          else
+            zone.records.create(
+              :name => bucket_name(payload).sub(".#{Carnivore::Config.get(:fission, :repository_publisher, :domain)}", ''),
+              :type => 'CNAME',
+              :value => endpoint || Carnivore::Config.get(:fission, :repository_publisher, :dns, :default_endpoint)
+            )
+          end
+          payload[:data][:repository_publisher][:dns] = bucket_name(payload)
+        end
       end
 
       def publish_bucket(bucket_name)
