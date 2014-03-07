@@ -90,8 +90,8 @@ module Fission
         if(Carnivore::Config.get(:fission, :repository_publisher, :dns, :enabled) &&
             bucket_name(payload).include?(Carnivore::Config.get(:fission, :repository_publisher, :domain)))
           zone = dns.zones.detect{|z| z.domain == Carnivore::Config.get(:fission, :repository_publisher, :domain)}
-          existing = zone.records.detect{|record| record.name == bucket_name(payload)}
           record_name = bucket_name(payload).sub(".#{Carnivore::Config.get(:fission, :repository_publisher, :domain)}", '')
+          existing = zone.records.detect{|record| record.name == record_name}
           if(existing)
             existing.name = record_name
             existing.type = 'CNAME'
