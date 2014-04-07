@@ -1,4 +1,3 @@
-require 'fileutils'
 require 'fission-repository-publisher'
 
 module Fission
@@ -10,6 +9,9 @@ module Fission
       attr_reader :object_store
 
       def setup(*args)
+        require 'webrick/httpauth'
+        require 'tempfile'
+        require 'fileutils'
         @object_store = Fission::Assets::Store.new
       end
 
@@ -60,6 +62,20 @@ module Fission
       end
 
       def write_access_file(payload, directory)
+        tmp = Tempfile.new('apache-publisher')
+        begin
+          htpasswd = WEBrick::HTTPAuth::Htpasswd.new(tmp.path)
+          [retrieve(payload, :account, :tokens, :repository)].flatten.compact.each do |token|
+            htpasswd.set_passwd(retrieve(payload, :account, :name), token)
+          end
+          htpasswd.flush
+          File.open(File.join(directory, '.htpasswd'), 'w+') do |file|
+            file.write File.read(tmp.path)
+          end
+        ensure
+          tmp.close
+          tmp.unlink
+        end
       end
 
       def point_dns(payload, endpoint = false)
