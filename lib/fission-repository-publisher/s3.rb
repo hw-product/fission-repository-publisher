@@ -78,7 +78,7 @@ module Fission
           next unless File.file?(file)
           object_key = file.sub(repo_directory, '').sub(/^\//, '')
           debug "Uploading repository item: [key: #{object_key}] [file: #{file}]"
-          s3_store.put(object_key, file)
+          s3_store.put(File.join('repository', object_key), file)
         end
       end
 
