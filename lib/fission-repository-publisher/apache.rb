@@ -61,7 +61,11 @@ module Fission
         end
       end
 
-      def write_access_file(payload, directory)
+      def setup_access(payload, directory)
+        credential_path = File.join(
+          Carnivore::Config.get(:fission, :repository_publisher, :apache, :credential_directory),
+          "#{File.dirname(directory)}.htpasswd"
+        )
         tmp = Tempfile.new('apache-publisher')
         begin
           htpasswd = WEBrick::HTTPAuth::Htpasswd.new(tmp.path)
@@ -69,7 +73,23 @@ module Fission
             htpasswd.set_passwd(retrieve(payload, :account, :name), token)
           end
           htpasswd.flush
-          File.open(File.join(directory, '.htpasswd'), 'w+') do |file|
+          File.open(credential_path, 'w+') do |file|
+            file.write File.read(tmp.path)
+          end
+        ensure
+          tmp.close
+          tmp.unlink
+        end
+        tmp = Tempfile.new('apache-publisher-access')
+        begin
+          tmp.puts [
+            "AuthUserFile #{credential_path}"
+            'AuthName "Authorization Required"',
+            'AuthType Basic',
+            'require valid-user'
+          ].join("\n")
+          tmp.flush
+          File.open(File.join(directory, '.htaccess'), 'w+') do |file|
             file.write File.read(tmp.path)
           end
         ensure
