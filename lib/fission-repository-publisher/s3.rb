@@ -95,12 +95,16 @@ module Fission
           if(existing)
             existing.name = record_name
             existing.type = 'CNAME'
-            existing.value = endpoint || Carnivore::Config.get(:fission, :repository_publisher, :dns, :default_endpoint)
+            existing.value = endpoint ||
+              Carnivore::Config.get(:fission, :repository_publisher, :dns, :s3_endpoint) ||
+              Carnivore::Config.get(:fission, :repository_publisher, :dns, :default_endpoint)
           else
             zone.records.create(
               :name => record_name,
               :type => 'CNAME',
-              :value => endpoint || Carnivore::Config.get(:fission, :repository_publisher, :dns, :default_endpoint)
+              :value => endpoint ||
+                Carnivore::Config.get(:fission, :repository_publisher, :dns, :s3_endpoint) ||
+                Carnivore::Config.get(:fission, :repository_publisher, :dns, :default_endpoint)
             )
           end
           payload[:data][:repository_publisher][:dns] = bucket_name(payload)
@@ -109,7 +113,7 @@ module Fission
 
       def publish_bucket(bucket_name)
         s3_store.connection.put_bucket_website(bucket_name)
-        "http://#{bucket_name}"
+        "https://#{bucket_name}"
       end
     end
   end
