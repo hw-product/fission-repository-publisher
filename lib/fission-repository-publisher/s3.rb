@@ -4,117 +4,68 @@ module Fission
   module RepositoryPublisher
     class S3 < Fission::Callback
 
-      include Fission::Utils::Dns
-
-      attr_reader :object_store, :s3_store
-
-      def setup(*args)
-        @object_store = Fission::Assets::Store.new
-        if(creds = Carnivore::Config.get(:fission, :repository_publisher, :credentials))
-          if(Carnivore::Config.get(:fission, :repository_publisher, :domain))
-            creds = creds.merge(:path_style => true)
-            creds.delete(:region)
-          end
-          @s3_store = Fission::Assets::Store.new(creds.merge(:bucket => :none))
-        else
-          @s3_store = object_store
-        end
-      end
-
+      # Determine message validity
+      #
+      # @param message [Carnivore::Message]
+      # @return [Truthy, Falsey]
       def valid?(message)
         super do |payload|
-          repos = retrieve(payload, :data, :repository_generator, :repositories)
-          (Carnivore::Config.get(:fission, :repository_publisher, :target).to_s.downcase == 's3' ||
-            retrieve(payload, :data, :repository_publisher, :target).to_s.downcase == 's3') &&
-            ((repos && !repos.empty?) || retrieve(payload, :data, :repository_publisher, :repositories))
+          is_dest = payload.get(:data, :repository_publisher, :target).to_s == 's3' ||
+            (payload.get(:data, :repository_publisher, :target).nil? && config[:target].to_s == 's3')
+          is_dest && payload.get(:data, :repository_publisher, :repositories)
         end
       end
 
-      def bucket_name(payload)
-        if(Carnivore::Config.get(:fission, :repository_publisher, :domain))
-          [retrieve(payload, :data, :account, :name),
-            Carnivore::Config.get(:fission, :repository_publisher, :domain)].join('.')
-        else
-          [retrieve(payload, :data, :account, :name), 'package-store'].join('-')
-        end
-      end
-
-      def working_directory(payload)
-        base = Carnivore::Config.get(:fission, :repository_publisher, :working_directory) ||
-          '/tmp/repository-publisher'
-        File.join(base, payload[:message_id])
-      end
-
+      # Publish repository to s3
+      #
+      # @param message [Carnivore::Message]
       def execute(message)
         failure_wrap(message) do |payload|
-          payload[:data][:repository_publisher] ||= {}
-          s3_store.bucket = bucket_name(payload)
-          [retrieve(payload, :data, :repository_publisher, :repositories),
-            retrieve(payload, :data, :repository_generator, :repositories)].each do |item|
-            if(item)
-              (item.respond_to?(:values) ? item.values : item).each do |packed_key|
-                asset = object_store.get(packed_key)
-                repo_directory = File.join(working_directory(payload), File.basename(packed_key))
-                Fission::Assets::Packer.unpack(asset, repo_directory)
-                upload_objects(repo_directory)
-              end
-            end
-            FileUtils.rm_rf(working_directory(payload))
+          payload.get(:data, :repository_publisher, :repositories).each do |type, pack|
+            directory = File.join(working_directory(payload), type)
+            packed_asset = asset_store.get(pack)
+            asset_store.unpack(packed_asset, directory)
+            upload_objects(payload, directory)
+            payload.set(:data, :repository_publisher, :s3, type, true)
           end
-          if(public?(payload))
-            site_endpoint = publish_bucket(bucket_name(payload))
-            payload[:data][:repository_publisher][:endpoint] = site_endpoint
+          payload.fetch(:data, :repository_publisher, :package_assets, {}).each do |dest_key, source_key|
+            asset = asset_store.get(source_key)
+            asset_store.put(File.join(key_prefix, dest_key), asset)
           end
-          point_dns(payload) # This should probably be a call to
-          # separate component
-          payload[:data][:repository_publisher][:s3_bucket_name] = bucket_name(payload)
           job_completed(:repository_publisher, payload, message)
         end
       end
 
-      def upload_objects(repo_directory)
+      # Upload files to remote bucket
+      #
+      # @param repo_directory [String]
+      # @return [TrueClass]
+      def upload_objects(payload, repo_directory)
         debug "Processing repository directory: #{repo_directory}"
         Dir.glob(File.join(repo_directory, '**', '**', '*')).each do |file|
           next unless File.file?(file)
-          object_key = file.sub(repo_directory, '').sub(/^\//, '')
+          object_key = File.join(
+            key_prefix
+            file.sub(repo_directory, '').sub(/^\//, '')
+          )
           debug "Uploading repository item: [key: #{object_key}] [file: #{file}]"
-          s3_store.put(File.join('repository', object_key), file)
+          s3_store.put(object_key, file)
         end
+        true
       end
 
-      def public?(payload)
-        false
+      # Generate common storage key prefix based on payload
+      # information
+      #
+      # @param payload [Smash]
+      # @return [String] key prefix
+      def key_prefix(payload)
+        object_key = File.join(
+          config.fetch(:bucket_prefix, 'published-repositories'),
+          payload.get(:data, :account, :name)
+        )
       end
 
-      def point_dns(payload, endpoint = false)
-        if(Carnivore::Config.get(:fission, :repository_publisher, :dns, :enabled) &&
-            bucket_name(payload).include?(Carnivore::Config.get(:fission, :repository_publisher, :domain)))
-          zone = dns.zones.detect{|z| z.domain == Carnivore::Config.get(:fission, :repository_publisher, :domain)}
-          record_name = bucket_name(payload).sub(".#{Carnivore::Config.get(:fission, :repository_publisher, :domain)}", '')
-          existing = zone.records.detect{|record| record.name == record_name}
-          if(existing)
-            existing.name = record_name
-            existing.type = 'CNAME'
-            existing.value = endpoint ||
-              Carnivore::Config.get(:fission, :repository_publisher, :dns, :s3_endpoint) ||
-              Carnivore::Config.get(:fission, :repository_publisher, :dns, :default_endpoint)
-          else
-            zone.records.create(
-              :name => record_name,
-              :type => 'CNAME',
-              :value => endpoint ||
-                Carnivore::Config.get(:fission, :repository_publisher, :dns, :s3_endpoint) ||
-                Carnivore::Config.get(:fission, :repository_publisher, :dns, :default_endpoint)
-            )
-          end
-          payload[:data][:repository_publisher][:dns] = bucket_name(payload)
-        end
-      end
-
-      def publish_bucket(bucket_name)
-        s3_store.connection.put_bucket_website(bucket_name)
-        "https://#{bucket_name}"
-      end
     end
   end
 end
