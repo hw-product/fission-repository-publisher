@@ -45,7 +45,7 @@ module Fission
         Dir.glob(File.join(repo_directory, '**', '**', '*')).each do |file|
           next unless File.file?(file)
           object_key = File.join(
-            key_prefix
+            key_prefix,
             file.sub(repo_directory, '').sub(/^\//, '')
           )
           debug "Uploading repository item: [key: #{object_key}] [file: #{file}]"
