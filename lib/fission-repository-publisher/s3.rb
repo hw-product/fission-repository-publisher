@@ -29,6 +29,7 @@ module Fission
             payload.set(:data, :repository_publisher, :s3, type, true)
           end
           payload.fetch(:data, :repository_publisher, :package_assets, {}).each do |dest_key, source_key|
+            debug "Uploading package asset from #{source_key} to #{dest_key}"
             asset = asset_store.get(source_key)
             asset_store.put(File.join(key_prefix(payload), dest_key), asset)
           end
