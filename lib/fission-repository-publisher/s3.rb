@@ -11,7 +11,7 @@ module Fission
       def valid?(message)
         super do |payload|
           is_dest = payload.get(:data, :repository_publisher, :target).to_s == 's3' ||
-            (payload.get(:data, :repository_publisher, :target).nil? && config[:target].to_s == 's3')
+            (payload.get(:data, :repository_publisher, :target).nil? && config.fetch(:target, 's3').to_s == 's3')
           is_dest && payload.get(:data, :repository_publisher, :repositories)
         end
       end
@@ -30,7 +30,7 @@ module Fission
           end
           payload.fetch(:data, :repository_publisher, :package_assets, {}).each do |dest_key, source_key|
             asset = asset_store.get(source_key)
-            asset_store.put(File.join(key_prefix, dest_key), asset)
+            asset_store.put(File.join(key_prefix(payload), dest_key), asset)
           end
           job_completed(:repository_publisher, payload, message)
         end
@@ -41,15 +41,15 @@ module Fission
       # @param repo_directory [String]
       # @return [TrueClass]
       def upload_objects(payload, repo_directory)
-        debug "Processing repository directory: #{repo_directory}"
         Dir.glob(File.join(repo_directory, '**', '**', '*')).each do |file|
+          debug "Processing repository file: #{file}"
           next unless File.file?(file)
           object_key = File.join(
-            key_prefix,
+            key_prefix(payload),
             file.sub(repo_directory, '').sub(/^\//, '')
           )
           debug "Uploading repository item: [key: #{object_key}] [file: #{file}]"
-          s3_store.put(object_key, file)
+          asset_store.put(object_key, file)
         end
         true
       end
