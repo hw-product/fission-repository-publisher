@@ -50,7 +50,7 @@ module Fission
             file.sub(repo_directory, '').sub(/^\//, '')
           )
           debug "Uploading repository item: [key: #{object_key}] [file: #{file}]"
-          asset_store.put(object_key, file)
+          asset_store.put(object_key, File.open(file, 'rb'))
         end
         true
       end
