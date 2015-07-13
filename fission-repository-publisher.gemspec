@@ -10,5 +10,5 @@ Gem::Specification.new do |s|
   s.description = 'Publish repositories'
   s.require_path = 'lib'
   s.add_dependency 'fission'
-  s.files = Dir['{lib}/**/**/*'] + %w(fission-repository-generator.gemspec README.md CHANGELOG.md)
+  s.files = Dir['{lib}/**/**/*'] + %w(fission-repository-publisher.gemspec README.md CHANGELOG.md)
 end
