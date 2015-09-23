@@ -71,6 +71,20 @@ module Fission
         )
       end
 
+      # Provide bucket for storage of repository files
+      #
+      # @param payload [Smash]
+      # @return [Miasma::Models::Storage::Bucket]
+      def repository_bucket(payload)
+        if(config[:public])
+          Jackal::Assets::Store.new(
+            :bucket => config[:public_bucket]
+          )
+        else
+          asset_store
+        end
+      end
+
     end
   end
 end
