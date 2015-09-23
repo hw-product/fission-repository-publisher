@@ -77,7 +77,7 @@ module Fission
       # @return [Miasma::Models::Storage::Bucket]
       def repository_bucket(payload)
         if(payload.get(:data, :repository_publisher, :public))
-          if(config[:public_bucket))
+          if(config[:public_bucket])
             Jackal::Assets::Store.new(
               :bucket => config[:public_bucket]
             )
