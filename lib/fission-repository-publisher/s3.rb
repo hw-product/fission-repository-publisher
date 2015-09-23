@@ -76,10 +76,14 @@ module Fission
       # @param payload [Smash]
       # @return [Miasma::Models::Storage::Bucket]
       def repository_bucket(payload)
-        if(config[:public])
-          Jackal::Assets::Store.new(
-            :bucket => config[:public_bucket]
-          )
+        if(payload.get(:data, :repository_publisher, :public))
+          if(config[:public_bucket))
+            Jackal::Assets::Store.new(
+              :bucket => config[:public_bucket]
+            )
+          else
+            abort ArgumentError.new 'Directed to publish publicly but no `public_bucket` value provided!'
+          end
         else
           asset_store
         end
